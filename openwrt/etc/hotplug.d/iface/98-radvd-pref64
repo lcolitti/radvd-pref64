@@ -1,0 +1,16 @@
+#!/bin/sh
+
+PREF64_IFACE=lan64
+PREF64_DEVICE=br-lan64
+
+if [ "$INTERFACE" != "$PREF64_IFACE" ]; then
+    exit 0
+fi
+
+if [ "$ACTION" = ifup ] ; then
+    logger -t radvd-pref64 "Starting radvd-pref64 on $PREF64_DEVICE"
+    /usr/bin/radvd-pref64.py $PREF64_DEVICE 2>&1 | logger -t radvd-pref64 &
+else
+    logger -t radvd-pref64 "$PREF64_IFACE going down, killing radvd-pref64"
+    killall radvd-pref64.py
+fi
