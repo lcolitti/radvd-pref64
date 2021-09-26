@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import binascii
 import fcntl
 import os
 import select
@@ -30,9 +31,9 @@ SO_BINDTODEVICE = 25
 
 IPV6_HDRINCL = 36
 
-# 64:ff9b::/96, 1800s
-OPTION = "260207080064ff9b0000000000000000".decode("hex")
-INTERVAL = 240
+# 64:ff9b::/96, 14400s
+OPTION = binascii.unhexlify(b"260207080064ff9b0000000000000000")
+INTERVAL = 600
 
 LOG = True
 
@@ -53,6 +54,7 @@ class RaDaemon(object):
   @staticmethod
   def GetInterfaceIndex(ifname):
     s = socket(AF_INET6, SOCK_DGRAM, 0)
+    ifname = bytes(ifname.encode("ascii"))  # For python 2 and 3 compatibility.
     ifr = struct.pack("%dsi" % IFNAMSIZ, ifname, 0)
     ifr = fcntl.ioctl(s, scapy.SIOCGIFINDEX, ifr)
     return struct.unpack("%dsi" % IFNAMSIZ, ifr)[1]
@@ -78,7 +80,7 @@ class RaDaemon(object):
     # Passing an interface to scapy.send() doesn't seem to work?
     # scapy.send(pkt, iface=self.iface)
 
-    s.sendto(str(pkt), sockaddr)
+    s.sendto(bytes(pkt), sockaddr)
 
 
   def MaybeRespondToRs(self, s):
@@ -97,11 +99,11 @@ class RaDaemon(object):
       return
 
     src = src[0]  # Don't need the scope ID because LL addresses are scoped.
-    self.Log("Packet from %s: %s" % (src, data.encode("hex")))
+    self.Log("Packet from %s: %s" % (src, binascii.hexlify(data)))
 
     try:
       self.SendRa(s, src)
-    except IOError, e:
+    except IOError as e:
       self.Log("Error sending RA: %s" % e)
 
 
@@ -119,9 +121,9 @@ class RaDaemon(object):
     s.setsockopt(IPPROTO_IPV6, IPV6_JOIN_GROUP, mreq)
 
     rs = 133
-    icmpv6_filter = 32 * [255]
+    icmpv6_filter = bytearray(32 * [255])
     icmpv6_filter[rs >> 3] &= ~(1 << ((rs & 7)))
-    icmpv6_filter = "".join([chr(x) for x in icmpv6_filter])
+    icmpv6_filter = bytes(icmpv6_filter)
     s.setsockopt(IPPROTO_ICMPV6, ICMPV6_FILTER, icmpv6_filter)
 
     s.bind(("::", 0))
