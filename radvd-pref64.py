@@ -31,6 +31,9 @@ SO_BINDTODEVICE = 25
 
 IPV6_HDRINCL = 36
 
+RS = 133
+RA = 134
+
 # 64:ff9b::/96, 1800s
 OPTION = binascii.unhexlify(b"260207080064ff9b0000000000000000")
 INTERVAL = 240
@@ -120,16 +123,14 @@ class RaDaemon(object):
     mreq = struct.pack("=16si", addr, ifindex)
     s.setsockopt(IPPROTO_IPV6, IPV6_JOIN_GROUP, mreq)
 
-    rs = 133
-    icmpv6_filter = bytearray(32 * [255])
-    icmpv6_filter[rs >> 3] &= ~(1 << ((rs & 7)))
-    icmpv6_filter = bytes(icmpv6_filter)
+    icmpv6_filter = 8 * [4 * b"\xff"]
+    icmpv6_filter[RS >> 5] = struct.pack("i", ~(1 << ((RS & 31))))
+    icmpv6_filter = b"".join(icmpv6_filter)
     s.setsockopt(IPPROTO_ICMPV6, ICMPV6_FILTER, icmpv6_filter)
 
     s.bind(("::", 0))
 
     return s
-
 
   def PollLoop(self, s):
     p = select.poll()
