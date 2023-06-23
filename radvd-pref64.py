@@ -22,10 +22,10 @@ import struct
 import sys
 import time
 from socket import *
-from scapy import all as scapy
 
 
 ICMPV6_FILTER = 1
+IPV6_TRANSPARENT = 75
 IFNAMSIZ = 16
 SO_BINDTODEVICE = 25
 
@@ -56,34 +56,32 @@ class RaDaemon(object):
 
   @staticmethod
   def GetInterfaceIndex(ifname):
-    s = socket(AF_INET6, SOCK_DGRAM, 0)
-    ifname = bytes(ifname.encode("ascii"))  # For python 2 and 3 compatibility.
-    ifr = struct.pack("%dsi" % IFNAMSIZ, ifname, 0)
-    ifr = fcntl.ioctl(s, scapy.SIOCGIFINDEX, ifr)
-    return struct.unpack("%dsi" % IFNAMSIZ, ifr)[1]
+    return if_nametoindex(ifname)
 
 
   def SendRa(self, s, dst=None):
     if dst is not None:
       msg = "Unicasting response to %s" % str(dst)
     else:
-      dst = "ff02::1%" + self.iface
+      dst = "ff02::1"
       msg = "Multicasting RA to %s" % (dst)
 
     self.Log(msg)
 
     dstaddr = getaddrinfo(dst, 0, AF_INET6, 0, 0, AI_NUMERICHOST)[0]
     sockaddr = dstaddr[4]
+    scopeid = self.GetInterfaceIndex(self.iface)
 
-    dst = dst.split("%")[0]
-    pkt = (scapy.IPv6(src="fe80::6464", dst=dst) /
-           scapy.ICMPv6ND_RA(prf=3, routerlifetime=0) /
-           OPTION)
+    ra_flags = 0
+    ra_hdr = struct.pack("!BBHBBHII", RA, 0, 0, 0, ra_flags, 0, 0, 0)
+    pkt = ra_hdr + OPTION
 
-    # Passing an interface to scapy.send() doesn't seem to work?
-    # scapy.send(pkt, iface=self.iface)
-
-    s.sendto(bytes(pkt), sockaddr)
+    s = self.OpenSocket()
+    s.bind(("fe80::6464", 0, 0, scopeid))
+    try:
+      s.sendto(pkt, sockaddr)
+    finally:
+      s.close()
 
 
   def MaybeRespondToRs(self, s):
@@ -112,9 +110,9 @@ class RaDaemon(object):
 
   def OpenSocket(self):
     s = socket(AF_INET6, SOCK_RAW | os.O_NONBLOCK, IPPROTO_ICMPV6)
-    s.setsockopt(IPPROTO_IPV6, IPV6_HDRINCL, 1)
     s.setsockopt(IPPROTO_IPV6, IPV6_MULTICAST_HOPS, 255)
     s.setsockopt(IPPROTO_IPV6, IPV6_UNICAST_HOPS, 255)
+    s.setsockopt(IPPROTO_IPV6, IPV6_TRANSPARENT, 1)
 
     # Don't bind to a specific index because otherwise we'd have to reopen
     # the socket when the interface goes away or changes ifindex.
